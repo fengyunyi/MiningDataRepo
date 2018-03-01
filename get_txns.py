@@ -12,8 +12,6 @@ Todo: none
 
 Note: Etherscan API request requires parameters in specified order
 a rate limit of 5 requests/sec (exceed and you will be blocked) -> sleep at least 0.2 sec
-**fail** transactions will not be excluded (must through other API requests
-
 
 """
 
