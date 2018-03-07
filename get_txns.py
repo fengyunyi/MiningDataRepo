@@ -9,6 +9,8 @@ if there are failed contracts, record the addresses and fix them later
 replace YourApiKeyToken with your token
 
 Todo: none
+Even allowed trying 5 times and timeout 3 sec, there are still many failed requests.
+This issue needs to be better addressed.
 
 Note: Etherscan API request requires parameters in specified order
 a rate limit of 5 requests/sec (exceed and you will be blocked) -> sleep at least 0.2 sec
@@ -30,7 +32,7 @@ def try_request_get(limit, url, payload, timeout):
 	while k < limit:
 		try:
 			r = requests.get(url, params=payload, timeout=timeout)
-			sleep(0.2)
+			sleep(0.3)
 			if r.status_code == 200:
 				return r
 
@@ -44,6 +46,11 @@ def try_request_get(limit, url, payload, timeout):
 def get_all_address(path_csv='verified_contracts.csv'):
 	df = pd.read_csv(path_csv)
 	return df['Address'].str[:42].tolist()
+
+def get_failed_list(fname):
+	with open(fname) as f:
+		content = f.readlines()
+	return [x.strip('\n') for x in content]
 
 
 def fetch_transactions(url, module, startblock, endblock, offset, address_list,
@@ -70,7 +77,7 @@ def fetch_transactions(url, module, startblock, endblock, offset, address_list,
 		if r_1 != 0:
 			this_dic = r_1.json() # dictionary object
 			if len(this_dic['result']) <= 0:  # no transaction at all
-				print('no transaction at {}, passed'. format(address_list[i]))
+				#print('no transaction at {}, passed'. format(address_list[i]))
 				continue
 		else:
 			print('time out, reached request limit for {}, passed'.format(address_list[i]))
@@ -101,33 +108,41 @@ def fetch_transactions(url, module, startblock, endblock, offset, address_list,
 if __name__ == '__main__':
 
 	
-	my_api_key = 'YourApiKeyToken'
-	timeout = 2
+	my_api_key = 'XBKMUE8YDRZU6RZIQZG92ZP32GZED6KP4Q'
+	timeout = 30
 	url = 'http://api.etherscan.io/api'
 	modu = 'account'
 	startblock = 0
 	endblock = 99999999
 	off_set = 5000  # how many record per page (request)
-	lim = 5
+	lim = 5  # allowing trying the same request up to lim times
 
-	address_list = get_all_address()
+	#address_list = get_all_address()
+	#start = 1341+1558
+	
+	# use this for the failed ones:
+	address_list = get_failed_list('failed_list_txns.txt')
+	
 	start = 0
 	end = len(address_list) - 1
 
 	# Getting normal transactions
 	print('Getting normal txns of smart contracts ......')
 	fetch_transactions(url, modu, startblock, endblock, off_set, address_list,
-					   start, end, my_api_key, timeout, lim, False)
+					   start, end, my_api_key, timeout, lim, isInternal=False)
 
 	print('\n')
 
+
 	# Getting internal transactions
+	address_list = get_all_address()
+	start = 0
+	end = len(address_list) - 1
 	print('Getting internal txns of smart contracts......')
 	fetch_transactions(url, modu, startblock, endblock, off_set, address_list,
-					   start, end, my_api_key, timeout, lim, True)
+					   start, end, my_api_key, timeout, lim, isInternal=True)
 
 	
-
 		
 
 	
