@@ -24,36 +24,37 @@ CREATE TABLE transactions (
  nonce INTEGER,
  timeStamp INTEGER,
  transactionIndex INTEGER,
- txreceipt_status txreceipt_status,
+ txreceipt_status INTEGER,
  value INTEGER
  );
 
 Note that, decided not to store blockhash. If want it, add one column.
 
-Then use the blow python script to import data to the table
-You can delete ./temp/ after done.
+Then use the blow python script to convert the json to csv files saved in disk
+(You can delete ./temp/ after done.)
+Use the sqlite3 console to import the csv:
+.mode csv
+.import file tablename
+
+Important note that you must have no header in the csv file otherwise the header
+will be treated as a data row; AND the columns in csv mush match the order of
+columns in the create statement.
+
+Or you don't create a table first, directly import a csv with header file. But
+every column will be TEXT, and you cannot change columns afterward including the
+affinity and any constraints.
 '''
 
-# WARNING: currently writing to sqlite3 db quite slow (about 3-4 hours), need >8G RAM
-# Originally used pandas.dataframe.to_sql to insert data, one call per json file, extremely slow, more than 10 hours.
-# Alternatively, used odo, but seem not improving a lot and brought other issues
-# Current solution: concatenate tables into bigger csv files saved to disk, then write to sqlite (reduce # of calls to insert to db)
-# TODO: can be more efficient
+
 
 
 # /home/yunyi/virtual_env/smct/bin/python3
 import json
 import pandas as pd
 import os
-import sqlite3
 from tqdm import tqdm
-from odo import odo
-from sqlalchemy.exc import IntegrityError
-#from timeout import timeout # debug
 
 
-#DATABASE = 'sqlite:////home/yunyi/ethereum.db::transactions'
-DATABASE = '/home/yunyi/ethereum.db'
 
 def parse_to_df(txn_file):  
 	with open(txn_file) as fp:
@@ -70,16 +71,38 @@ def parse_to_df(txn_file):
 		# the df column names have to match exactly the table column names in db
 		df.rename(columns={'from':'add_from', 'to':'add_to', \
 							'input':'txn_input', 'hash':'txn_hash'}, inplace=True)
-		
+		# string to numeric
+		# >>> np.finfo('float64').max
+		# 1.7976931348623157e+308
+		# >>> np.iinfo('int64').max
+		# 9223372036854775807			
+		df.blockNumber = pd.to_numeric(df.blockNumber)
+		df.confirmations = pd.to_numeric(df.confirmations)
+		df.cumulativeGasUsed = pd.to_numeric(df.cumulativeGasUsed)
+		df.gas = pd.to_numeric(df.gas)
+		df.gasUsed = pd.to_numeric(df.gasUsed)
+		df.isError = pd.to_numeric(df.isError)
+		df.timeStamp = pd.to_numeric(df.timeStamp)
+		df.transactionIndex = pd.to_numeric(df.transactionIndex)
+		df.txreceipt_status = pd.to_numeric(df.txreceipt_status)
+		df.nonce = pd.to_numeric(df.nonce)
+		df[['value', 'gasPrice']] = df[['value', 'gasPrice']].astype(float)
+			
 		# add a column for the contract address
 		# the value should be the same as either the add_from or add_to,
 		# and contractAddres when the transaction is contract creation 
 		df['add_contract']=txn_file[23:65]
 		
+		# set column order to match the table schema in db
+		df = df[['txn_hash', 'add_contract', 'blockNumber', 'confirmations',
+				'contractAddress', 'cumulativeGasUsed', 'add_from', 'add_to',
+				'gas', 'gasPrice', 'gasUsed', 'txn_input', 'isError', 'nonce',
+				'timeStamp','transactionIndex','txreceipt_status','value']]
+		
 		return df
 
 
-def append_dfs(directory, out_dir, max_row_count):
+def append_dfs(directory, out_dir, max_row_count, header):
 	df = pd.DataFrame([])
 	count = 0
 	print('concatenate data to csv...')
@@ -88,10 +111,10 @@ def append_dfs(directory, out_dir, max_row_count):
 		if filename.endswith(".json"):
 			current_df = parse_to_df(directory+filename)
 			if current_df.shape[0]>max_row_count:
-				current_df.to_csv(out_dir+'chunk_'+str(count)+'.csv', index=False)
+				current_df.to_csv(out_dir+'chunk_'+str(count)+'.csv', index=False, header=header)
 				count+=1
 			elif df.shape[0]>max_row_count:
-				df.to_csv(out_dir+'chunk_'+str(count)+'.csv', index=False)
+				df.to_csv(out_dir+'chunk_'+str(count)+'.csv', index=False, header=header)
 				count+=1
 				df = pd.DataFrame([])
 			else:
@@ -100,45 +123,8 @@ def append_dfs(directory, out_dir, max_row_count):
 			continue
 	print('done.')
 
-
-
-def put_all_files_to_db(directory):
-	conn = sqlite3.connect(DATABASE)
-
-	for filename in tqdm(os.listdir(directory)):
-		if filename.endswith(".csv") and filename.startswith("temp"):
-			print(filename)
-			df = pd.read_csv(filename)
-			
-			# string to numeric
-			# >>> np.finfo('float64').max
-			# 1.7976931348623157e+308
-			# >>> np.iinfo('int64').max
-			# 9223372036854775807			
-			df.blockNumber = pd.to_numeric(df.blockNumber)
-			df.confirmations = pd.to_numeric(df.confirmations)
-			df.cumulativeGasUsed = pd.to_numeric(df.cumulativeGasUsed)
-			df.gas = pd.to_numeric(df.gas)
-			df.gasUsed = pd.to_numeric(df.gasUsed)
-			df.isError = pd.to_numeric(df.isError)
-			df.timeStamp = pd.to_numeric(df.timeStamp)
-			df.transactionIndex = pd.to_numeric(df.transactionIndex)
-			df.txreceipt_status = pd.to_numeric(df.txreceipt_status)
-			df.nonce = pd.to_numeric(df.nonce)
-			df[['value', 'gasPrice']] = df[['value', 'gasPrice']].astype(float)
-			
-			df.to_sql('transactions', conn, if_exists='append', index=False)
-			
-			''' using odo instead
-			try:
-				t = odo(df, DATABASE)
-			except IntegrityError:
-				continue
-			'''
-
 	 	
 if __name__ == '__main__':
-	append_dfs('./transactions/', './temp/', max_row_count=100000)
-	put_all_files_to_db('./temp/')
+	append_dfs('./transactions/', './temp/', max_row_count=500000, header=False)
 
 
