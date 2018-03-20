@@ -8,7 +8,7 @@ port data from all txn files downloaded by get_txns.py into a sqlite database
 3. In the sqlite console, create a table named transactions:
 
 CREATE TABLE transactions (
- txn_hash TEXT PRIMARY KEY,
+ txn_hash TEXT,
  add_contract TEXT,
  blockNumber INTEGER NOT NULL,
  confirmations INTEGER NOT NULL,
@@ -29,6 +29,7 @@ CREATE TABLE transactions (
  );
 
 Note that, decided not to store blockhash. If want it, add one column.
+Don't use index or any unique or keys to avoid extremely slow data insertion
 
 Then use the blow python script to convert the json to csv files saved in disk
 (You can delete ./temp/ after done.)
@@ -40,9 +41,6 @@ Important note that you must have no header in the csv file otherwise the header
 will be treated as a data row; AND the columns in csv mush match the order of
 columns in the create statement.
 
-Or you don't create a table first, directly import a csv with header file. But
-every column will be TEXT, and you cannot change columns afterward including the
-affinity and any constraints.
 '''
 
 
