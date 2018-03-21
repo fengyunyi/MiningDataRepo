@@ -114,7 +114,7 @@ def append_dfs(directory, out_dir, max_row_count, header):
 			elif df.shape[0]>max_row_count:
 				df.to_csv(out_dir+'chunk_'+str(count)+'.csv', index=False, header=header)
 				count+=1
-				df = pd.DataFrame([])
+				df = current_df
 			else:
 				df = df.append(current_df)
 		else:
@@ -123,6 +123,6 @@ def append_dfs(directory, out_dir, max_row_count, header):
 
 	 	
 if __name__ == '__main__':
-	append_dfs('./transactions/', './temp/', max_row_count=500000, header=False)
+	append_dfs('./transactions/', './temp/', max_row_count=800000, header=False)
 
 
