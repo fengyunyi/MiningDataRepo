@@ -1,3 +1,5 @@
+// ERC20: https://github.com/OpenZeppelin/zeppelin-solidity/blob/master/contracts/token/ERC20/StandardToken.sol
+
 // In solidity allowance is defined as mapping type:
 // mapping (address => mapping (address => uint256)) allowance
 
@@ -64,7 +66,7 @@ pred transferFrom(spender, toAddr, fromAddr: Address, t, t': ERC20, value: Int){
 	let fromBal = t.balance[fromAddr] |
 		t'.balance = t.balance ++ (fromAddr -> minus[fromBal, value])
 	let toBal = t.balance[toAddr] |
-		t'.balance = t.balance ++ (fromAddr -> plus[toBal, value])
+		t'.balance = t.balance ++ (toAddr -> plus[toBal, value])
 	let fromAllowed = t.allowance[fromAddr][spender] |
 		t'.allowance = t.allowance ++ (fromAddr -> spender -> minus[fromAllowed, value])
 }
