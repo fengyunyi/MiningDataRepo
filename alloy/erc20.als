@@ -11,16 +11,15 @@
 open util/ordering[TOKENBASE] as ord
 sig Address{}
 
-
 sig TOKENBASE{
-	totalSupply: one Int, // in the smallest, nondividable unit
+	totalSupply: one Int,
 	balance: Address -> one Int,
-	allowance: Address -> (Address -> Int),
+	allowance:  Address -> Address -> one Int
 	}
 
-fact {all e: TOKENBASE| e.totalSupply > 0 }
-//fact {all e: TOKENBASE| all a, b: Address| (e.allowance[a])[b] => 0}
-//fact {all e: TOKENBASE, a: Address| e.balance[a] => 0}
+fact {all e: TOKENBASE | e.totalSupply > 0 }
+fact {all e: TOKENBASE, a: Address | e.balance[a] >= 0}
+fact {all e: TOKENBASE, a, b: Address | e.allowance[a][b] >= 0}
 
 
 // msg.sender(fromAddr) sends $value to another address (to_address)
@@ -33,10 +32,8 @@ pred transfer(toAddr, fromAddr: Address,  t, t': TOKENBASE, value: Int){
 	t'.allowance = t.allowance
 	
 	let fromBal = t.balance[fromAddr] | 
-		t'.balance = t.balance ++ (fromAddr -> minus[fromBal, value])
-	let toBal = t.balance[toAddr] |
-		t'.balance = t.balance ++ (toAddr -> plus[toBal, value])
-
+	let toBal = t.balance[toAddr] | 
+		t'.balance = t.balance ++ (toAddr -> toBal.plus[value] + fromAddr ->  fromBal.minus[value])
 }
 
 // allow spender (expecting a contract but could be EOA) to withdraw from user's account, multiple times, up to the _value amount
@@ -45,14 +42,15 @@ pred transfer(toAddr, fromAddr: Address,  t, t': TOKENBASE, value: Int){
 pred approve(spender, user: Address, t, t': TOKENBASE, value: Int){
 	//preconditions
 	value > 0
-	spender != user
+	//spender != user
+	value != t.allowance[user][spender]
 
 	// copy unchanged relations
 	t'.totalSupply = t.totalSupply
 	t'.balance = t.balance
 
-	// not sure (user may not be in allowance)
-	t'.allowance = t.allowance ++ (user -> (spender -> value))
+	// TODO: override only checks the domain (user)
+	t'.allowance = t.allowance ++ (user -> spender -> value)
 }
 
 // This is meant to be used with approve
@@ -70,11 +68,11 @@ pred transferFrom(spender, toAddr, fromAddr: Address, t, t': TOKENBASE, value: I
 	t'.totalSupply = t.totalSupply
 
 	let fromBal = t.balance[fromAddr] |
-		t'.balance = t.balance ++ (fromAddr -> minus[fromBal, value])
 	let toBal = t.balance[toAddr] |
-		t'.balance = t.balance ++ (toAddr -> plus[toBal, value])
+		t'.balance = t.balance ++ (fromAddr -> minus[fromBal, value] + toAddr -> plus[toBal, value])
+
 	let fromAllowed = t.allowance[fromAddr][spender] |
-		t'.allowance = t.allowance ++ (fromAddr -> (spender -> minus[fromAllowed, value]))
+		t'.allowance = t.allowance ++ (fromAddr -> spender -> minus[fromAllowed, value])
 }
 
 
@@ -91,7 +89,7 @@ pred freshTOKENBASE(sender: Address, supply: Int, token: TOKENBASE) {
 // states of the token
 fact traces {
 	// the first state is a freshly created token
-	some creator: Address, sup: Int | sup > 0 && freshTOKENBASE[creator, sup, ord/first]
+	some creator: Address, sup: Int | freshTOKENBASE[creator, sup, ord/first]
 
 	all ts: TOKENBASE - ord/last | // for all token states except the last
 		let ts' = ts.next |
@@ -101,9 +99,9 @@ fact traces {
 }
 
 // total balance == totalSupply should always hold
-//assert totalBalance {
-//	all token: ERC20 | token.totalSupply = (sum b: Address | token.balance[b])
-//}
-assert positive{all e: TOKENBASE| all a, b: Address| e.allowance[a][b] >= 0}
+assert totalBalance {
+	all token: TOKENBASE | token.totalSupply = (sum b: Address | token.balance[b])
+}
+//assert positive{all e: TOKENBASE| all a, b: Address| e.allowance[a][b] >= 0}
 //check totalBalance for 6 but 4 Address
 run {} for 8 but 4 Address
